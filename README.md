@@ -2,6 +2,10 @@
 
 Data analysis project focused on the evolution of tourism in Spain between 2019 and 2024 and its contribution to the country's GDP.
 
+## 🌐 Live Interactive Reports
+
+* **📄 Full Interactive HTML Report:** [View Report Online](https://htmlpreview.github.io/?https://github.com/adrianapenate/spain-tourism-gdp-analysis-2019-2024/blob/main/An%C3%A1lisis-del-turismo-en-Espa%C3%B1a-y-su-aportaci%C3%B3n-al-PIB-entre-2019-y-2024.html)
+
 ## 📊 Project Overview
 
 The project analyzes tourism activity across Spanish Autonomous Communities, focusing on:
