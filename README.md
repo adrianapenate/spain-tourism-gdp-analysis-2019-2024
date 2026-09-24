@@ -105,4 +105,4 @@ Open the .Rmd file in RStudio and click Knit to generate the HTML report.
 
 ## 👤 Author
 
-Adriana Peñate Sosa
+Adriana Peñate Sosa — @adrianapenate
