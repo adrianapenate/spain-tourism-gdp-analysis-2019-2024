@@ -1,0 +1,78 @@
+
+/* General Background and Text Styling */
+body {  /* Dark blue for text to ensure good contrast */
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Header / Navigation Bar Styling */
+.navbar {
+    padding: 5px 10px; /* Reducir el padding general de la barra de navegación */
+}
+
+.navbar .navbar-brand,
+.navbar .navbar-nav > li > a {
+    color: white;  /* White for better readability */
+    font-weight: bold;
+    padding: 8px 10px; /* Reducir el padding horizontal */
+    font-size: 14px; /* Reducir ligeramente el tamaño de fuente */
+}
+
+/* Asegurar que las etiquetas de la barra de navegación estén en una sola línea */
+.navbar .navbar-nav {
+    display: flex;
+    flex-wrap: nowrap; /* Evitar que las etiquetas se dividan en varias líneas */
+    justify-content: space-around; /* Espaciado uniforme entre los elementos */
+    overflow-x: auto; /* Habilitar desplazamiento horizontal si es necesario */
+    white-space: nowrap; /* Prevenir el quiebre de texto */
+}
+
+/* Styling for Active Tab */
+.navbar .navbar-nav > li.active > a,
+.navbar .navbar-nav > li.active > a:focus,
+.navbar .navbar-nav > li.active > a:hover {
+    border-radius: 4px; /* Adding slight rounding for a softer look */
+}
+
+/* Sidebar Styling */
+.sidebar { 
+    margin-top: 20px;  /* Establecer el margen superior a 20px */
+}
+
+/* Buttons Styling */
+.btn { 
+    border: none;
+}
+
+
+/* Remove default blue outline on focus */
+.btn:focus,
+.navbar .navbar-nav > li > a:focus {
+    outline: none;
+}
+
+
+/* Table Styling */
+table {
+    border: none;  /* Eliminar los bordes de la tabla */
+ /* Colapsar los bordes para que no haya espacios entre celdas */
+}
+
+th, td {
+    border: none;  /* Eliminar los bordes de las celdas */
+    padding: 8px;  /* Espaciado interno de las celdas */
+}
+
+/* Eliminar bordes entre filas */
+tr {
+    border: none;  /* Eliminar los bordes entre filas */
+}
+
+
+a:hover {
+    text-decoration: underline;
+}
+
+
+.navbar .navbar-nav > li > a:hover { /* Fondo azul oscuro al pasar el cursor */
+    text-decoration: none; /* Opcional: quitar subrayado */
+}

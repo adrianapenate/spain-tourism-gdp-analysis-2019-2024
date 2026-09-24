@@ -1,0 +1,945 @@
+---
+title: "Análisis del turismo en España y su aportación al PIB entre 2019 y 2024"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+runtime: shiny
+css: custom.css
+---
+
+```{r global, include=FALSE}
+library(MASS)
+library(shinydashboard)
+library(datasets)
+library(highcharter) 
+library(fpp3)
+library(RColorBrewer)
+library(openxlsx)  
+library(readxl)
+library(leaflet)  
+library(geojsonio)
+library(plotly)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(fuzzyjoin)
+pdf(file = NULL)
+```
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo=FALSE
+)
+```
+
+```{r, warning=FALSE} 
+# Datos usados en el proyecto
+# Tabla de gastos
+GastosTurismo <- read_excel('GastosTurismo.xlsx') %>% as_tibble()
+GastosTurismo <- GastosTurismo %>%
+  pivot_longer(c('2018T1', '2018T2', '2018T3', '2018T4', '2019T1','2019T2','2019T3','2019T4', '2020T1', '2020T2','2020T3','2020T4', 
+                 '2021T1', '2021T2', '2021T3', '2021T4', '2022T1','2022T2','2022T3','2022T4', '2023T1', '2023T2','2023T3','2023T4', '2024T1'), names_to = "Trimestre", values_to = "Gasto")
+GastosTurismo <- GastosTurismo %>%
+  filter(Procedencia=='Total')
+GastosTurismo$Gasto <- as.numeric(GastosTurismo$Gasto)
+
+
+# Tabla con los datos del PIB
+PIBTurismo <- read_excel('PIBTurismo.xlsx') %>% as_tibble()
+PIBTurismo <- PIBTurismo %>%
+  pivot_longer(c('2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023'), names_to = "Años", values_to = "Valor")
+PIBTurismo$Valor <- as.numeric(PIBTurismo$Valor)
+
+
+# Tabla general del turismo
+TurismoEspaña <- read_excel('TurismoEspaña.xlsx') %>% as_tibble()
+TurismoEspaña <- TurismoEspaña[2:1221,]
+TurismoEspaña$Turistas <- as.numeric(TurismoEspaña$Turistas)
+TurismoEspaña$Pernoctaciones <- as.numeric(TurismoEspaña$Pernoctaciones)
+TurismoEspaña$`Duración media de los viajes` <- as.numeric(TurismoEspaña$`Duración media de los viajes`)
+
+
+# Datos para el mapa
+geoj <- geojson_read('https://ctim.es/AEDV/data/geo_spain_autonomias.geojson',  what = "sp")
+geoj.tb <- geoj %>% as_tibble()
+
+
+ceuta_melilla <- TurismoEspaña %>%
+  filter(Comunidad %in% c("Ceuta", "Melilla"))
+
+resultados_ceuta_melilla <- ceuta_melilla %>%
+  group_by(Comunidad = "CeutayMelilla", Fecha) %>%
+  summarise(
+    Turistas = sum(Turistas, na.rm = TRUE),
+    Pernoctaciones = sum(Pernoctaciones, na.rm = TRUE),
+    `Duración media de los viajes` = mean(`Duración media de los viajes`, na.rm = TRUE)
+  )
+
+TurismoEspaña.Mapa <- TurismoEspaña %>%
+  filter(!Comunidad %in% c("Ceuta", "Melilla", "Total Nacional")) %>% 
+  bind_rows(resultados_ceuta_melilla) %>%
+  group_by(Comunidad, Fecha) %>%
+  summarise(
+    Turistas = Turistas,
+    Pernoctaciones = Pernoctaciones,
+    `Duración media de los viajes` = `Duración media de los viajes`
+  ) %>%
+  pivot_longer(Turistas:`Duración media de los viajes`, names_to = "Indicador", values_to = "Valor")
+
+# Le añadimos los códigos manualmente para facilitar la unión posterior en el mapa
+
+asignar_grupo <- function(tabla) {
+  tabla <- tabla[order(tabla$Comunidad), ]
+  num_grupos <- ceiling(nrow(tabla) / 61*3)
+  etiquetas <- paste0("ESP.", 1:num_grupos, "_1")
+  tabla$GID_1 <- rep(etiquetas, each = 61*3, length.out = nrow(tabla))
+  
+  return(tabla)
+}
+
+TurismoEspaña.Mapa <- TurismoEspaña.Mapa %>%
+  mutate(Comunidad = case_when(
+    Comunidad == "Madrid" ~ "ComunidaddeMadrid",
+    Comunidad == "Comunidad Valenciana" ~ "ComunidadValenciana",
+    Comunidad == "Navarra" ~ "ComunidadForaldeNavarra",
+    Comunidad == "Canarias" ~ "IslasCanarias",
+    Comunidad == "Asturias" ~ "PrincipadodeAsturias",
+    Comunidad == "Murcia" ~ "RegióndeMurcia",
+    TRUE ~ Comunidad 
+  ))
+
+
+TurismoEspaña.Mapa <- asignar_grupo(TurismoEspaña.Mapa)
+
+
+TurismoEspaña$Fecha <- as.Date(paste0(TurismoEspaña$Fecha, "01"), format = "%YM%m%d")
+
+TurismoEspaña.Q <- TurismoEspaña %>% mutate(Fecha=yearquarter(Fecha)) 
+
+TurismoEspaña.Q <- TurismoEspaña.Q %>% group_by(Comunidad, Fecha) %>% 
+  summarise(
+  Turistas = sum(Turistas),
+  Pernoctaciones = sum(Pernoctaciones),
+  `Duración media de los viajes`= sum(`Duración media de los viajes`)/3,
+   .groups = "drop")
+
+convertir_trimestre_a_fecha <- function(trimestre) {
+  trimestre <- gsub("T1", "-01-01", trimestre) 
+  trimestre <- gsub("T2", "-04-01", trimestre)  
+  trimestre <- gsub("T3", "-07-01", trimestre)  
+  trimestre <- gsub("T4", "-10-01", trimestre)  
+  as.Date(trimestre)  
+}
+
+GastosTurismo <- GastosTurismo %>% dplyr::select(Comunidad, Trimestre, Gasto) %>%
+  mutate(Trimestre = convertir_trimestre_a_fecha(Trimestre))
+
+GastosTurismo.Q <- GastosTurismo %>% mutate(Trimestre=yearquarter(Trimestre)) 
+  
+TurismoEspaña.Gastos <- left_join(TurismoEspaña.Q, GastosTurismo.Q, join_by(Comunidad, Fecha==Trimestre))
+
+TurismoEspaña.Gastos.PL <- TurismoEspaña.Gastos %>% 
+  pivot_longer(Turistas:Gasto, names_to = "Indicador", values_to = "Valor")
+
+TurismoEspaña.Gastos.Last <- TurismoEspaña.Gastos %>%
+    pivot_longer(Turistas:Gasto, names_to = "Indicador", values_to = "Valor") %>%
+    dplyr::group_by(Comunidad, Indicador) %>%
+    dplyr::summarise(
+      Valor = last(na.omit(Valor))
+    )%>%
+    pivot_wider(names_from = 'Indicador', values_from = 'Valor')
+
+
+pca <- TurismoEspaña.Gastos.Last %>% 
+   column_to_rownames(var="Comunidad") %>%
+   na.omit() %>%
+   prcomp(scale = TRUE)
+```
+
+
+Información general
+=======================================================================
+
+```{r}
+shiny::renderUI({
+  div(
+    style = "margin: 20px;", # Margen general para todo el contenido
+    tags$h1("Análisis del turismo en España y su aportación al PIB entre 2019 y 2024", 
+            style = "font-size: 36px; font-weight: bold; text-align: center; margin: 20px;"),
+    tags$p("En los últimos cinco años, el sector turístico en España ha experimentado importantes cambios, impulsados tanto por factores globales como por situaciones particulares dentro del país. Desde 2019 hasta la actualidad, el turismo ha sido una de las piedras angulares de la economía española, representando una fuente esencial de ingresos, empleos y una contribución significativa al Producto Interior Bruto (PIB).", 
+           style = "font-size: 18px; margin: 20px; text-align: justify;"),
+    tags$h2("Evolución del turismo en España", 
+            style = "font-size: 24px; font-weight: bold; margin: 20px;"),
+    tags$p("Desde 2019, España ha registrado un récord histórico de 83,5 millones de turistas internacionales, generando ingresos de 92.000 millones de euros. Sin embargo, la pandemia de COVID-19 en 2020 causó una drástica caída del 77% en pernoctaciones y redujo la llegada de turistas internacionales a 19 millones. Desde entonces, el sector ha mostrado una recuperación notable, alcanzando cifras prepandemia en 2023 con 85,1 millones de turistas y un gasto récord de 108.662 millones de euros.", 
+           style = "font-size: 18px; margin: 20px; text-align: justify;"),
+    div(
+      style = "display: flex; justify-content: space-around; margin: 20px;",
+      div(
+        style = "border: 2px solid #006899; border-radius: 10px; padding: 20px; width: 45%; margin: 10px;",
+        tags$h3("Impacto Económico", 
+                style = "font-size: 20px; font-weight: bold; margin: 10px;"),
+        tags$p("El turismo ha sido un pilar fundamental, aportando cerca del 12% al PIB español en 2019. Tras el desplome de 2020, el sector ha recuperado su relevancia, alcanzando una contribución del 11,8% al PIB en 2023. Este modelo más orientado a la calidad refleja un cambio hacia un turismo sostenible y de mayor gasto por visitante.", 
+               style = "font-size: 16px; margin: 10px;")
+      ),
+      div(
+        style = "border: 2px solid #006899; border-radius: 10px; padding: 20px; width: 45%; margin: 10px;",
+        tags$h3("Fuentes", 
+                style = " font-size: 20px; font-weight: bold; margin: 10px;"),
+        tags$p("- Instituto Nacional de Estadística (INE)", 
+               style = "font-size: 16px; margin: 10px;"),
+        tags$p("Estos datos consolidan el turismo como un sector esencial para la economía y el empleo en España, mostrando su capacidad de adaptación y resiliencia ante desafíos globales como la pandemia. El análisis de estas tendencias es crucial para definir estrategias que fortalezcan su sostenibilidad y competitividad en el futuro.", 
+               style = "font-size: 16px; margin: 10px;")
+      )
+    ),
+    tags$h2("Objetivos del Estudio", 
+            style = "font-size: 24px; font-weight: bold; margin: 20px;"),
+    div(
+      style = "border: 2px solid #006899; border-radius: 10px; padding: 20px; margin: 20px;",
+      tags$p("Este estudio tiene como objetivo analizar la evolución del turismo en las diversas Comunidades Autónomas de España desde 2019, explorando las tendencias en el número de visitantes, estancias y gasto turístico. También se busca evaluar el impacto económico del sector, identificando factores clave como la pandemia y la sostenibilidad para proponer estrategias futuras adaptativas.", 
+             style = "font-size: 16px; margin: 10px; text-align: justify;")
+    )
+  )
+})
+```
+
+
+
+Mapa atributos 
+=======================================================================
+
+Column {.sidebar data-width=330}
+--------------------------------------------------
+
+
+```{r}
+selectInput(
+  "Indicador", 
+  label = "Indicador" , 
+  choices = sort(unique(TurismoEspaña.Mapa$Indicador)), 
+  selected = "Turistas"
+)
+```
+
+```{r}
+selectInput(
+  "Fecha", 
+  label = "Fecha" , 
+  choices = sort(unique(TurismoEspaña.Mapa$Fecha)), 
+  selected = "2024M07"
+)
+```
+
+```{r}
+# función reactive para procesar los datos 
+TurismoEspaña.Filtered <- reactive({
+  tb <- TurismoEspaña.Mapa %>%
+    filter(
+      Fecha == input$Fecha,
+      Indicador == input$Indicador
+    ) %>%
+  arrange(desc(Valor))
+  
+  return(tb)
+  
+})
+```
+
+
+
+```{r}
+renderTable({
+  
+ TurismoEspaña.Filtered() %>% 
+ mutate(Valor=prettyNum(round(Valor,digits=2), big.mark = ",")) %>%  
+ dplyr::select(-Fecha, -Indicador, -GID_1)
+  
+})
+```
+
+
+Column
+--------------------------------------------------
+
+### 
+
+```{r} 
+
+# dibujamos el mapa coroplético
+leaflet::renderLeaflet({
+
+  join <- left_join(geoj.tb, TurismoEspaña.Filtered(), by="GID_1")
+
+ data <-join$Valor
+ pal <- colorQuantile("YlOrRd", data, n = 9)
+ legend.title <- input$Indicador
+ 
+ # construcción etiquetas 
+ etiquetas <-paste(
+    "<strong> ",
+    join$Comunidad ,
+    "</strong><br>",
+    legend.title,
+    ": ",
+    prettyNum(round(data,digits=2), big.mark = ",", scientific = FALSE)
+  )  %>%
+ lapply(htmltools::HTML)
+
+ # dibujamos el mapa 
+ geoj %>%
+  leaflet() %>% 
+  addPolygons(
+    fillColor = ~pal(data), 
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions( 
+      weight = 2,
+      color = rgb(0.2,0.2,0.2),
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = etiquetas 
+  ) %>% 
+  addLegend("bottomleft", pal = pal, values = data,
+    title = legend.title,
+    labFormat = function(type, cuts, p) {
+          n = length(cuts) 
+          as.character(round((as.integer(cuts)[-n] + as.integer(cuts)[-1])/2))
+        },
+    opacity = 1
+  )
+
+})
+```
+
+Gráficas
+=======================================================================
+
+Column {.sidebar data-width=220}
+--------------------------------------------------
+```{r}
+shiny::renderUI({
+  
+  text <- 
+  paste(
+    "<strong>Comparación por fecha</strong><br>"
+  )
+      
+  HTML(text)
+})
+```
+
+```{r}
+selectInput(
+  "Indicador", 
+  label = "Indicador:", 
+  choices = sort(unique(TurismoEspaña.Gastos.PL$Indicador)), 
+  selected = "Turistas"
+)
+
+selectInput(
+  "Fecha1", 
+  label = "Primera fecha:",
+  choices = unique(TurismoEspaña.Gastos$Fecha), 
+  selected = yearquarter("2020-01-01")
+)
+
+selectInput(
+  "Fecha2", 
+  label = "Segunda fecha:",
+  choices = unique(TurismoEspaña.Gastos$Fecha), 
+  selected = yearquarter("2024-01-01")
+)
+```
+
+```{r}
+shiny::renderUI({
+  
+  text <- 
+  paste(
+    "<br>",
+    "<strong>PIB</strong><br>"
+  )
+      
+  HTML(text)
+})
+```
+
+```{r}
+selectInput(
+  "PIB", 
+  label = "Calificación PIB:",
+  choices = unique(PIBTurismo$PIB), 
+  selected = "Precios corrientes: Millones de euros"
+)
+```
+
+
+```{r}
+shiny::renderUI({
+  
+  text <- 
+  paste(
+    "<br>",
+    "<strong>Gasto medio</strong><br>"
+  )
+      
+  HTML(text)
+})
+```
+
+
+```{r}
+
+selectInput(
+  "Comunidad", 
+  label = "Comunidad:",
+  choices = c(unique(GastosTurismo$Comunidad), "Total Nacional"), 
+  selected = "Total Nacional"
+)
+```
+
+
+Column {.tabset data-width=650}
+-----------------------
+
+
+### Comparación por fecha 
+
+```{r}
+renderPlotly({
+  TurismoEspaña.Gastos %>% 
+    filter(Fecha %in% c(input$Fecha1, input$Fecha2), Comunidad != "Total Nacional") %>%
+    ggplot(aes(x = Comunidad, y = .data[[input$Indicador]], fill = factor(Fecha))) + 
+    geom_bar(stat = "identity", position = position_dodge()) + 
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top") +
+    labs(
+      title = paste("Comparación de", input$Indicador, "entre", input$Fecha1, "y", input$Fecha2),
+      x = "Comunidad Autónoma",
+      y = input$Indicador,
+      fill = "Fecha"
+    )
+})
+
+```
+
+
+### PIB
+
+
+```{r} 
+highcharter::renderHighchart({
+ pib_data <- PIBTurismo %>% filter(PIB == input$PIB)
+
+highchart() %>%
+  hc_chart(type = "line") %>%
+  hc_xAxis(categories = pib_data$Años) %>%
+  hc_yAxis(title = list(text = "Valor")) %>%
+  hc_title(text = "Evolución del aporte del turismo al PIB", style = list(fontFamily = "Arial")) %>%
+  hc_series(list(
+    name = "PIB Turismo",
+    data = pib_data$Valor,
+    marker = list(symbol = "circle")
+  ))
+})
+```
+
+
+### Gasto medio por turista
+
+```{r} 
+highcharter::renderHighchart({
+  if (input$Comunidad == "Total Nacional"){
+  gastos_data <- GastosTurismo %>%
+  group_by(Trimestre) %>%
+  summarise(Gasto = mean(na.omit(Gasto)))}
+  else {
+  gastos_data <- GastosTurismo %>% filter(Comunidad == input$Comunidad)
+  }
+
+highchart() %>%
+  hc_chart(type = "line") %>%
+  hc_xAxis(categories = gastos_data$Trimestre) %>%
+  hc_yAxis(title = list(text = "Gasto Medio")) %>%
+  hc_title(text = "Evolución del gasto medio por turista", style = list(fontFamily = "Arial")) %>%
+  hc_tooltip(shared = TRUE) %>%
+  hc_plotOptions(line = list(marker = list(symbol = "circle"))) %>%
+  hc_series(list(
+    name = "Gasto Medio",
+    data = gastos_data$Gasto
+  )) %>%
+  hc_xAxis(labels = list(rotation = 45))
+})
+```
+
+### Mapa de calor
+
+```{r}
+renderPlotly({
+  p <- TurismoEspaña %>%
+  filter(Comunidad != "Total Nacional") %>%
+  pivot_longer(Turistas:`Duración media de los viajes`, names_to = "Indicador", values_to = "Valor") %>%
+  group_by(Indicador) %>%
+  mutate(Valor = (Valor - min(Valor)) / (max(Valor) - min(Valor))) %>%
+   group_by(Comunidad, Indicador) %>%
+  summarise(Valor = mean(Valor, na.rm = TRUE)) %>%
+  group_by(Indicador) %>%
+  mutate(Valor = Valor / max(Valor, na.rm = TRUE)) %>%
+  ggplot(aes(x = Indicador, y = Comunidad, fill = Valor)) + 
+    geom_tile() + 
+    scale_fill_gradientn(colors = brewer.pal(9, 'YlOrRd')) +
+  ggtitle("Datos medios del turismo (2019-2024)")
+
+ggplotly(p, tooltip=c("Indicador","Comunidad","Valor"))
+})
+```
+
+
+Comparación atributos 
+=======================================================================
+
+```{verbatim}
+En esta página del cuadro de mandos vamos a adaptar el ejemplo Dashboard3.Rmd a nuestros datos. 
+Los mayores cambios se producen en la función reactive que procesa los datos en función
+de la selección de los parámetros 
+```
+
+
+
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+```{r}
+# Widgets para selección de parámetros 
+
+selectInput(
+  "x", 
+  label = "Indicador x:",
+  choices = sort(unique(TurismoEspaña.Gastos.PL$Indicador)), 
+  selected = "Turistas"
+)
+
+selectInput(
+  "x_scale", 
+  label = "Transformación de Escala Indicador 1:",
+  choices = c("none",
+              "sqrt",    
+              "log"
+             ), 
+  selected = "none"
+)
+
+selectInput(
+  "y", 
+  label = "Indicador y:",
+  choices = sort(unique(TurismoEspaña.Gastos.PL$Indicador)), 
+  selected = "Pernoctaciones"
+)
+
+selectInput(
+  "y_scale", 
+  label = "Transformación de Escala Indicador 2:",
+  choices = c("none",
+              "log",
+              "boxcox"
+             ), 
+  selected = "none"
+)
+```
+
+```{r}
+# función reactive que calcula los indicadores seleccionados escalados, 
+# en su caso, la transformación Box-Cox entre ellos y
+# la regresión lineal del resultado. 
+# devuelve una lista con todo lo calculado
+# una lista de objetos se construye haciendo list(Objeto1,Objeto2,...)
+# el objeto de la posición k  de una lista se recupera haciendo NombreLista[[k]]
+
+
+regression.analysis <- reactive( {
+  
+  TurismoEspaña.Gastos.Filtered <- TurismoEspaña.Gastos.PL %>% 
+  group_by(Comunidad, Indicador) %>%
+  filter(Comunidad != "Total Nacional",Indicador %in% c(input$x, input$y)) %>%
+    summarise(
+      Valor = last(na.omit(Valor))
+    ) %>%
+    pivot_wider(names_from = Indicador, values_from = Valor)
+
+tb <- tibble(
+      Comunidad = TurismoEspaña.Gastos.Filtered$Comunidad,
+      x = TurismoEspaña.Gastos.Filtered[[input$x]],
+      y = TurismoEspaña.Gastos.Filtered[[input$y]]
+    )  %>% 
+    na.omit()
+
+ # escalamos los indicadores de acuerdo con los parámetros de escalado   
+  if(input$x_scale=="sqrt") tb$x <- sqrt(tb$x)
+  if(input$x_scale=="log") tb$x <- log(tb$x)  
+  if(input$y_scale=="log") tb$y <- log(tb$y)  
+  lambda <- 1  
+  if(input$y_scale=="boxcox"){
+    bc <- MASS::boxcox (y ~ x,data=tb) # Cálculo óptimo modelo Box-Cox 
+    lambda <- round(bc $ x [which.max (bc $ y)],digits=4)
+    if(lambda!=0){
+      tb$y <- tb$y^lambda/lambda
+    } else {
+      tb$y <- log(tb$y)
+    }
+  }
+  
+  # Cálculo regresión lineal después del escalado de las variables. 
+  fit <- lm(y ~ x,data=tb)
+  
+  # devolvemos una lista con todo lo calculado 
+  return(list(tb,fit,lambda))  
+
+
+})
+``` 
+
+### 
+
+```{r}
+# imprimimos en formato HTML los resultados del análisis de regresión 
+# de los indicadores seleccionados escalados
+shiny::renderUI({
+  
+  # capturamos el resultado del análisis de regresión 
+  tb <- regression.analysis()[[1]]
+  fit <- regression.analysis()[[2]]
+  lambda <- regression.analysis()[[3]]
+  
+  # imprimimos el resultado en formato HTML 
+  HTML(
+    paste(
+      "<strong>LINEAR REGRESSION ANALYSIS</strong> <br>",
+      "<strong>formula:   y=ax+b </strong><br>",
+      "<strong>x: indicator 1 scaled </strong><br>",
+      "<strong>y: indicator 2 scaled </strong><br>",
+      "<strong><br>RESULTS</strong><br>",
+      "<strong>correlation:</strong>",round(cor(tb$x,tb$y),digits = 4),
+      "<br><strong>slope (a):</strong>",formatC(fit$coefficients[2], format = "e", digits = 2),
+      "<br><strong>independent (b):</strong>",formatC(fit$coefficients[1], format = "e", digits = 2)
+    )
+  )
+ 
+})
+```
+
+
+Column
+--------------------------------------------------
+
+### Scaled Indicators Comparison
+
+```{r} 
+# Diagrama de dispersión de los indicadores seleccionados escalados 
+# Con la recta de regresión 
+renderPlotly({
+  
+  # capturamos el resultado del análisis de regresión 
+  tb <- regression.analysis()[[1]]
+  
+  # dibujamos el diagrama de dispersión 
+  tb %>%
+    ggplot(aes(x,y,label=Comunidad)) + 
+    geom_point() +
+    theme(legend.position = "none") +
+    labs(x= input$x, y= input$y) +
+    geom_smooth(method = lm, se = FALSE) 
+  
+})
+```
+
+Column {data-width=300}
+--------------------------------------------------
+
+
+### Scaled Indicator Values
+
+```{r}
+# imprimimos la tabla con los valores de los indicadores seleccionados 
+# ordenados por el primer indicador
+renderTable({
+  
+  regression.analysis()[[1]] %>% 
+  arrange(desc(x)) %>% 
+  mutate(x=prettyNum(round(x,digits=2), big.mark = ",")) %>% 
+  mutate(y=prettyNum(round(y,digits=2), big.mark = ","))
+  
+})
+```
+
+
+
+Análisis atributos
+=====================================  
+
+Row 
+-------------------------------------
+### Matriz de correlación 
+
+```{r}
+
+highcharter::renderHighchart({
+  # COMPLETAR ALUMNO
+  TurismoEspaña.Gastos.Last[2:5] %>%
+    na.omit()%>%
+  cor(use='complete.obs') %>%
+  hchart()
+})
+```   
+ 
+
+
+### Porcentaje de varianza explicada por las componentes principales
+    
+```{r}
+
+renderPlotly({
+ # COMPLETAR ALUMNO
+ p <- tibble(
+   label=fct_inorder(paste("PC",1:length(pca$sdev))),
+   varPercent = pca$sdev^2/sum(pca$sdev^2) * 100
+  ) %>%
+  ggplot(aes(x=label,y=varPercent)) +
+  geom_bar(stat = "identity") +
+  labs(x= "Componentes Principales",y= "Porcentaje varianza explicada") +
+  geom_text(aes(label=paste0(round(varPercent,digits = 1),"%")),size=3,colour = "blue",nudge_y = 1.) 
+
+  ggplotly(p)
+})
+
+```
+
+Row 
+-------------------------------------
+   
+   
+### Gráfico de dispersión con las dos primeras componentes
+    
+```{r}
+highcharter::renderHighchart({
+  # COMPLETAR ALUMNO
+  hchart(pca) 
+})
+```
+
+
+
+Series temporales
+=======================================================================
+
+```{r,message=FALSE,echo=FALSE} 
+
+TurismoEspaña.ST <- TurismoEspaña %>%
+  pivot_longer(Turistas:`Duración media de los viajes`, names_to = "Indicador", values_to = "Valor")
+
+```
+
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+
+```{r}
+selectInput(
+  "Indicador", # nombre de uso interno del campo. Se accede al campo haciendo input$country1
+  label = "Indicador:", # etiqueta del campo para presentar en el cuadro de mando
+  choices =  unique(TurismoEspaña.ST$Indicador), # vector con las opciones para seleccionar 
+  selected = "Turistas" # la opción seleccionada por defecto 
+)
+```
+
+```{r}
+selectInput(
+  "Comunidad1", # nombre de uso interno del campo. Se accede al campo haciendo input$country1
+  label = "Comunidad 1:", # etiqueta del campo para presentar en el cuadro de mando
+  choices =  unique(TurismoEspaña.ST$Comunidad), # vector con las opciones para seleccionar 
+  selected = "Andalucía" # la opción seleccionada por defecto 
+)
+```
+
+```{r}
+selectInput(
+  "Comunidad2", 
+  label = "Comunidad 2:",
+  choices =  unique(TurismoEspaña.ST$Comunidad), 
+  selected = "Cataluña"
+)
+```
+
+```{r}
+selectInput(
+  "FechaS", 
+  label = "Mes inicial:",
+  choices =  unique(TurismoEspaña.ST$Fecha), 
+  selected = "2019-07-01"
+)
+```
+
+```{r}
+selectInput(
+  "FechaT", 
+  label = "Mes final:",
+  choices =  unique(TurismoEspaña.ST$Fecha), 
+  selected = "2024-07-01"
+)
+```
+
+
+
+Column
+--------------------------------------------------
+
+
+###  
+
+
+```{r} 
+highcharter::renderHighchart({
+ TurismoEspaña.ST %>% 
+    filter(Indicador == input$Indicador) %>%
+    filter(Comunidad == input$Comunidad1) %>%
+    filter(Fecha >= input$FechaS & Fecha <= input$FechaT) %>%
+    tsibble::as_tsibble(index = Fecha, key = Comunidad) %>%
+    highcharter::hchart("line", hcaes(x = Fecha, y = Valor, group = Comunidad))
+})
+```
+
+
+
+Column
+--------------------------------------------------
+
+###
+
+```{r} 
+highcharter::renderHighchart({
+ TurismoEspaña.ST %>% 
+    filter(Indicador == input$Indicador) %>%
+    filter(Comunidad == input$Comunidad2) %>%
+    filter(Fecha >= input$FechaS & Fecha <= input$FechaT) %>%
+    tsibble::as_tsibble(index = Fecha, key = Comunidad) %>%
+    highcharter::hchart("line", hcaes(x = Fecha, y = Valor, group = Comunidad))
+})
+```
+
+
+Predicciones
+=======================================================================
+
+```{r,message=FALSE,echo=FALSE} 
+TurismoEspaña.ts <- TurismoEspaña %>%
+  mutate( 
+    Fecha = yearmonth(Fecha)
+  )
+TurismoEspaña.ts <- TurismoEspaña.ts %>%
+  as_tsibble(index=Fecha, key=Comunidad) %>%
+  fill_gaps()
+
+TurismoEspaña.omit.COVID <- TurismoEspaña %>%
+  filter(Fecha<=as.Date("2020-01-01") | Fecha>=as.Date("2021-10-01"))
+
+TurismoEspaña.omit.COVID.ts <- TurismoEspaña.omit.COVID %>%
+  mutate(
+    Fecha = yearmonth(Fecha)
+  )
+TurismoEspaña.omit.COVID.ts <- TurismoEspaña.omit.COVID.ts %>%
+  as_tsibble(index=Fecha, key=Comunidad) %>%
+  fill_gaps()
+
+TurismoEspaña.ARIMA <- TurismoEspaña.ts %>% 
+  model(ARIMA(Turistas))
+
+TurismoEspaña.omit.COVID.ARIMA <- TurismoEspaña.omit.COVID.ts %>% 
+  model(ARIMA(Turistas))
+
+
+TurismoEspaña.fill.COVID <- TurismoEspaña.omit.COVID.ts %>%
+  model(ARIMA(Turistas)) %>% 
+  interpolate(TurismoEspaña.omit.COVID.ts)
+
+TurismoEspaña.fill.COVID.ARIMA <- TurismoEspaña.fill.COVID %>% model(ARIMA(Turistas))
+```
+
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+
+```{r}
+selectInput(
+  "Comunidad", # nombre de uso interno del campo. Se accede al campo haciendo input$country1
+  label = "Comunidad:", # etiqueta del campo para presentar en el cuadro de mando
+  choices =  unique(TurismoEspaña.ts$Comunidad), # vector con las opciones para seleccionar 
+  selected = "Total Nacional" # la opción seleccionada por defecto 
+)
+```
+
+```{r}
+shiny::sliderInput(
+  "valor.slider",
+  label = "Seleccionar meses de predicción:",
+  min = 6,
+  max= 24,
+  value=12
+)
+```
+
+Column {.tabset data-width=650}
+-----------------------
+
+### Datos reales 
+
+
+```{r} 
+renderPlot({
+  TurismoEspaña.ARIMA.prediction <- TurismoEspaña.ARIMA %>%
+  forecast(h=paste(input$valor.slider," months"))
+  
+  TurismoEspaña.ARIMA.prediction %>% filter(Comunidad==input$Comunidad) %>% 
+  autoplot((TurismoEspaña.ts %>% filter(Comunidad==input$Comunidad))) + labs(title = str_wrap(paste("Predicción ARIMA del turismo en", input$Comunidad), width = 50))
+})
+
+```
+
+### Omitir COVID
+
+
+```{r} 
+renderPlot({
+  TurismoEspaña.omit.COVID.ARIMA.prediction <- TurismoEspaña.omit.COVID.ARIMA %>%
+  forecast(h=paste(input$valor.slider," months"))
+  
+  TurismoEspaña.omit.COVID.ARIMA.prediction %>% filter(Comunidad==input$Comunidad) %>% 
+  autoplot((TurismoEspaña.omit.COVID.ts %>% filter(Comunidad==input$Comunidad))) + labs(title = str_wrap(paste("Predicción ARIMA del turismo en", input$Comunidad, "omitiendo datos en la pandemia de la COVID"), width = 50))
+})
+
+```
+
+### Datos interpolados
+
+
+
+```{r} 
+renderPlot({
+  TurismoEspaña.fill.COVID.ARIMA.prediction <- TurismoEspaña.fill.COVID.ARIMA %>%
+  forecast(h=paste(input$valor.slider," months"))
+  
+  TurismoEspaña.fill.COVID.ARIMA.prediction %>% filter(Comunidad==input$Comunidad) %>% 
+  autoplot((TurismoEspaña.fill.COVID %>% filter(Comunidad==input$Comunidad))) + labs(title = str_wrap(paste("Predicción ARIMA del turismo en", input$Comunidad, "con nuevos datos en la pandemia de la COVID"), width = 50))
+})
+
+```
+
+
+

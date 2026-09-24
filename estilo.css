@@ -1,0 +1,120 @@
+/* Fondo general del documento */
+body {
+  font-family: 'Arial', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333333;
+  background-color: #ffffff; /* Fondo blanco */
+  margin: 20px;
+  padding: 20px;
+  text-indent: 2em; /* Sangría global */
+}
+
+/* Encabezados */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Arial', sans-serif; /* Fuente Arial para todos los encabezados */
+  color: #2780E3; /* Color base azul para encabezados */
+  margin-top: 40px;
+  margin-bottom: 10px;
+}
+
+/* Estilo específico para cada nivel de encabezado */
+h1 {
+  font-size: 2.5em;
+  border-bottom: 3px solid #4d99cc; /* Azul más claro que el base */
+  padding-bottom: 5px;
+}
+h2 {
+  font-size: 2em;
+  border-bottom: 2px solid #66b3e6; /* Azul claro para el borde */
+  padding-bottom: 3px;
+}
+h3 {
+  font-size: 1.75em;
+  color: #2780E3; /* Azul suave con tonalidad más fría */
+}
+
+h1, h2, h3, h4, h5, h6, ul, ol {
+  text-indent: 0; /* Sin sangría */
+}
+
+/* Párrafos */
+p {
+  text-align: justify;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  text-indent: 2em; /* Sangría global */
+}
+
+/* Enlaces */
+a {
+  color: #2780E3; /* Azul base para enlaces */
+  text-decoration: none;
+}
+a:hover {
+  color: #2780E3; /* Azul más oscuro para hover */
+  text-decoration: underline;
+}
+
+/* Tablas */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+th, td {
+  border: 1px solid #cccccc;
+  padding: 10px;
+  text-align: left;
+  font-family: 'Arial', sans-serif; /* Fuente Arial en tablas */
+}
+th {
+  background-color: #4d99cc; /* Azul suave para encabezados de tabla */
+  color: white;
+}
+tr:nth-child(even) {
+  background-color: #d6e9f8; /* Azul muy claro para filas alternas */
+}
+
+/* Bloques de código */
+pre {
+  background-color: #f8f9fa;
+  border: 1px solid #dddddd;
+  padding: 10px;
+  overflow-x: auto;
+}
+code {
+  font-family: 'Courier New', monospace;
+  background-color: #d6e9f8; /* Azul muy claro */
+  padding: 2px 4px;
+  border-radius: 3px;
+  color: #2780E3; /* Azul base para el texto de código */
+}
+
+/* Listas */
+ul, ol {
+  margin: 10px 0;
+  padding-left: 40px;
+}
+li {
+  margin: 5px 0;
+  font-family: 'Arial', sans-serif; /* Fuente Arial */
+}
+
+/* Bloques de citas */
+blockquote {
+  margin: 20px 0;
+  padding: 10px 20px;
+  background-color: #d6e9f8; /* Azul muy claro */
+  border-left: 5px solid #2780E3; /* Azul base para el borde izquierdo */
+  font-style: italic;
+  color: #333333; /* Texto oscuro */
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  font-size: 0.9em;
+  color: #666666;
+  margin-top: 30px;
+}
